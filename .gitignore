@@ -1,0 +1,88 @@
+# ------------------------------------------------------------------------------
+# FTM IT Property Records — Git ignore rules
+# After clone: run `composer install` to restore vendor/
+# ------------------------------------------------------------------------------
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# --- PHP / Composer ---
+/vendor/
+composer.phar
+
+# --- Application logs (keep logs/.gitignore) ---
+/logs/*.log
+/logs/*.txt
+/logs/.admin_password_hash
+!/logs/.gitignore
+
+# --- OS junk ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# --- Editors & IDEs ---
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+.project
+.classpath
+.settings/
+
+# --- PHP tools & test artifacts ---
+.phpunit.result.cache
+.phpunit.cache/
+phpunit.xml
+coverage/
+.nyc_output/
+.php-cs-fixer.cache
+.phpstan.cache/
+
+# --- Node (if added later for frontend tooling) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Archives & backups ---
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+*.bak
+*.backup
+*~
+*.swp
+*.swo
+
+# --- Local / debug-only files ---
+*.local.php
+debug.log
+error_log
+.phpintel/
+*.cache
+
+# --- Docker local overrides (optional compose overrides) ---
+docker-compose.override.yml
+docker-compose.local.yml
+
+# --- Misc scratch files ---
+ignore.gitignore.txt
+CLEANUP-SUMMARY.md

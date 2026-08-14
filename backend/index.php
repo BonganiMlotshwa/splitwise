@@ -9,15 +9,11 @@ $counts = $conn->query("SELECT
     COUNT(*) FILTER (WHERE status='available')           AS available,
     COUNT(*) FILTER (WHERE status='checked_out')         AS checked_out,
     COUNT(*) FILTER (WHERE status='permanently_assigned') AS permanent,
-    COUNT(*) FILTER (WHERE status='checked_out'
-        AND expected_return_date IS NOT NULL
-        AND expected_return_date < CURRENT_DATE)         AS overdue
     FROM items")->fetch();
 $total     = (int)($counts['total']     ?? 0);
 $available = (int)($counts['available'] ?? 0);
 $checked   = (int)($counts['checked_out'] ?? 0);
 $permanent = (int)($counts['permanent'] ?? 0);
-$overdue   = (int)($counts['overdue']   ?? 0);
 
 $handovers = 0;
 try {
@@ -367,16 +363,6 @@ if ($breakName !== '') {
     </div>
   </div>
 </div>
-
-<?php if ($overdue > 0): ?>
-<div class="alert alert-danger d-flex align-items-center gap-2 mt-3" role="alert">
-  <i class="bi bi-exclamation-triangle-fill fs-5"></i>
-  <div>
-    <strong><?php echo $overdue; ?> item<?php echo $overdue > 1 ? 's are' : ' is'; ?> overdue for return.</strong>
-    <a href="<?php echo BASE_PATH; ?>items/items.php?status=checked_out" class="alert-link ms-2">View overdue items &rarr;</a>
-  </div>
-</div>
-<?php endif; ?>
 
 <!-- Quick Actions Section -->
 <div class="row g-4 my-4">

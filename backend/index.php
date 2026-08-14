@@ -8,7 +8,7 @@ $counts = $conn->query("SELECT
     COUNT(*) AS total,
     COUNT(*) FILTER (WHERE status='available')           AS available,
     COUNT(*) FILTER (WHERE status='checked_out')         AS checked_out,
-    COUNT(*) FILTER (WHERE status='permanently_assigned') AS permanent,
+    COUNT(*) FILTER (WHERE status='permanently_assigned') AS permanent
     FROM items")->fetch();
 $total     = (int)($counts['total']     ?? 0);
 $available = (int)($counts['available'] ?? 0);

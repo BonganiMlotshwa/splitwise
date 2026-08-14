@@ -128,21 +128,31 @@ Single-query stat cards: Total, Available, Checked Out, Permanently Assigned, Ha
 ## Project Layout
 
 ```
-auth/                   Login, logout, password reset, signup
-items/                  All item management pages
-handovers/              Handover forms, summary, details, export
-reports/                Received applications, activity log
-includes/               Shared header, footer, nav
-api/                    JSON API endpoints (legacy; not used by current pages)
-logs/                   Daily JSON activity logs (gitignored)
-vendor/                 Composer packages: dompdf (PDF export)
-config.php              DB connection, auth helpers, CSRF, activity logging
-init.sql                First-run schema for all tables + employee seed data
-setup_database.php      Admin-only page to create/verify tables on existing DBs
-docker-compose.yml      PHP + Postgres service definitions
-Dockerfile              PHP/Apache image with pdo_pgsql
-start-ftm-system.bat    Windows helper to start Docker and open browser
-.env.example            Template — copy to .env, never commit .env
+backend/                  PHP application (Apache document root)
+  config.php              DB connection, auth helpers, CSRF, activity logging
+  index.php               Dashboard
+  setup_database.php      Admin-only page to create/verify tables on existing DBs
+  auth/                   Login, logout, password reset, signup
+  items/                  All item management pages
+  handovers/              Handover forms, summary, details, export
+  reports/                Received applications and other reports
+  includes/               Shared header, footer, nav
+  api/                    JSON API endpoints (legacy)
+  logs/                   Daily JSON activity logs (gitignored)
+  vendor/                 Composer packages: dompdf (PDF export)
+
+database/
+  init.sql                First-run schema for all tables + employee seed data
+  items_data.sql          Optional seed data
+
+docker/
+  Dockerfile              PHP/Apache image with pdo_pgsql
+  Dockerfile.dockerignore Build exclusion rules
+
+docker-compose.yml        PHP + Postgres service definitions (stays at root)
+.env.example              Template — copy to .env, never commit .env
+README.md
+start-ftm-system.bat      Windows helper to start Docker and open browser
 ```
 
 ---

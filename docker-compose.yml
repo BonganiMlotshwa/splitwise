@@ -10,8 +10,8 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./items_data.sql:/docker-entrypoint-initdb.d/02-items_data.sql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./database/items_data.sql:/docker-entrypoint-initdb.d/02-items_data.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ftm_it_property_records"]
       interval: 10s
@@ -19,12 +19,14 @@ services:
       retries: 5
 
   php:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     container_name: ftm_php
     ports:
       - "8000:80"
     volumes:
-      - .:/var/www/html
+      - ./backend:/var/www/html
     depends_on:
       postgres:
         condition: service_healthy

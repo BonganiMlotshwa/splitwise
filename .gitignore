@@ -13,14 +13,15 @@ credentials.json
 secrets.json
 
 # --- PHP / Composer ---
-/vendor/
+vendor/
 composer.phar
 
 # --- Application logs (keep logs/.gitignore) ---
-/logs/*.log
-/logs/*.txt
-/logs/.admin_password_hash
-!/logs/.gitignore
+logs/*.log
+logs/*.json
+logs/*.txt
+logs/.admin_password_hash
+!logs/.gitignore
 
 # --- OS junk ---
 .DS_Store

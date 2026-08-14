@@ -45,6 +45,7 @@ if ($token !== '') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token !== '') {
+    verify_csrf();
     $password = $_POST['password'] ?? '';
     $password_confirm = $_POST['password_confirm'] ?? '';
 
@@ -93,6 +94,7 @@ include __DIR__ . '/../includes/header.php';
 <?php else: ?>
   <div class="d-flex justify-content-center">
     <form method="post" class="card p-4 text-center mx-auto" style="max-width: 420px; width: 100%;">
+      <?php echo csrf_field(); ?>
       <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
       <div class="mb-3">
         <label class="form-label w-100 text-center">New Password</label>

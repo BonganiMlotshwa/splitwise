@@ -128,6 +128,17 @@ function write_activity($conn, $action, $entity_type, $entity_id, $details=null)
         'ua' => $_SERVER['HTTP_USER_AGENT'] ?? null,
     ];
     @file_put_contents($file, json_encode($entry, JSON_UNESCAPED_SLASHES) . PHP_EOL, FILE_APPEND);
+
+    // Also persist to the database activity_log table so records are queryable
+    try {
+        $detailsText = is_array($details) ? json_encode($details, JSON_UNESCAPED_SLASHES) : (string)$details;
+        $stmt = $conn->prepare(
+            "INSERT INTO activity_log (actor_user_id, action, entity_type, entity_id, details) VALUES (?,?,?,?,?)"
+        );
+        $stmt->execute([$uid, $action, $entity_type, (int)$entity_id, $detailsText]);
+    } catch (Throwable $e) {
+        // Silently ignore if activity_log table doesn't exist yet
+    }
 }
 
 function is_admin(): bool {
@@ -163,8 +174,8 @@ define('APP_DB_PASS', getenv('APP_DB_PASS') ?: '');
 // Security: admin password from .env; public signup off unless explicitly enabled
 define('ALLOW_PUBLIC_SIGNUP', filter_var(getenv('ALLOW_PUBLIC_SIGNUP') ?: 'false', FILTER_VALIDATE_BOOLEAN));
 
-// SMTP (email notifications; disabled by default)
-define('SMTP_ENABLED', false);
+// SMTP (email notifications — set SMTP_ENABLED=true in .env to activate)
+define('SMTP_ENABLED', filter_var(getenv('SMTP_ENABLED') ?: 'false', FILTER_VALIDATE_BOOLEAN));
 define('SMTP_HOST', 'smtp.example.com');
 define('SMTP_PORT', 587);
 define('SMTP_USER', 'user@example.com');
@@ -181,8 +192,10 @@ define('OLLAMA_MODEL', 'tinyllama');
 define('CLAUDE_API_KEY', getenv('CLAUDE_API_KEY') ?: '');
 define('CLAUDE_MODEL', 'claude-3-haiku-20240307');
 
+$_ftm_env = getenv('APP_ENV') ?: 'development';
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', $_ftm_env === 'production' ? 0 : 1);
+ini_set('log_errors', 1);
 
 if (DB_PASSWORD === '') {
     die('Database password not configured. Copy .env.example to .env and set DB_PASSWORD.');
@@ -234,6 +247,29 @@ try {
     }
 } catch (PDOException $e) {
     die('Database connection failed: ' . $e->getMessage());
+}
+
+// ── CSRF Protection ───────────────────────────────────────────
+function csrf_token(): string {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function csrf_field(): string {
+    return '<input type="hidden" name="_csrf" value="' . htmlspecialchars(csrf_token(), ENT_QUOTES) . '">';
+}
+
+function verify_csrf(): void {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        return;
+    }
+    $submitted = $_POST['_csrf'] ?? '';
+    if ($submitted === '' || !hash_equals(csrf_token(), $submitted)) {
+        http_response_code(403);
+        die('Request validation failed. Please go back and try again.');
+    }
 }
 
 function flash($key) {

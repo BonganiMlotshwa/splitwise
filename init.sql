@@ -97,3 +97,99 @@ INSERT INTO users (id, username, name, email, password_hash, role, created_at) V
 (6, 'mbongeni', 'Mbongeni', '11430mbongisenin@gmail.com', '$2y$10$2JqGw/1BUrJDHTrsDz0gnOuysgFjb4U5aSy34t/YlSJuIFEKX8rr2', 'user', '2025-09-30 13:08:09');
 
 SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 1) FROM users));
+
+-- Seed departments (used by checkout, applications, assign_permanent)
+INSERT INTO departments (name, code) VALUES
+('IT', 'IT'),
+('ERP', 'ERP'),
+('HR', 'HR'),
+('Finance', 'FIN'),
+('Operations', 'OPS'),
+('Management', 'MGT'),
+('Administration', 'ADM'),
+('Marketing', 'MKT'),
+('Sales', 'SLS')
+ON CONFLICT (name) DO NOTHING;
+
+-- Employees who receive IT items (separate from system users)
+CREATE TABLE IF NOT EXISTS employees (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(190) NOT NULL,
+    ftm_pin VARCHAR(50),
+    department VARCHAR(100),
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_employees_name ON employees(name);
+CREATE INDEX IF NOT EXISTS idx_employees_active ON employees(active);
+
+INSERT INTO employees (name, department, active) VALUES
+('Boniswa Kunene',        'IT',  true),
+('Nkosikhona Dludlu',     'IT',  true),
+('Thabo Dlamini',         'IT',  true),
+('Sibongakonke Mamba',    'IT',  true),
+('Mbongiseni Nkambule',   'IT',  true),
+('Nothando Motsa',        'ERP', true),
+('Bongani Mlotshwa',      'ERP', true),
+('Sibusiso Zwane',        'IT',  true),
+('Sibusiso Tsabedze',     'IT',  true),
+('Nombulelo Simelane',    'IT',  true),
+('Makabongwe Mkhonta',    'IT',  true),
+('Ntokozo Thwala',        'ERP', true),
+('Khululiwe Motsa',       'ERP', true),
+('Phikisile Maseko',      'HR',  true),
+('Lindokuhle Makhaya',    'IT',  true)
+ON CONFLICT DO NOTHING;
+
+-- Handovers tables (consolidated from setup_database.php)
+CREATE TABLE IF NOT EXISTS handovers (
+    id SERIAL PRIMARY KEY,
+    date_issued DATE NOT NULL,
+    employee_name VARCHAR(255) NOT NULL,
+    ftm_pin VARCHAR(50) NOT NULL,
+    department VARCHAR(100) NOT NULL,
+    issued_by VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS handover_devices (
+    id SERIAL PRIMARY KEY,
+    handover_id INTEGER NOT NULL REFERENCES handovers(id) ON DELETE CASCADE,
+    device_name VARCHAR(255) NOT NULL,
+    serial_number VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_handovers_date       ON handovers(date_issued);
+CREATE INDEX IF NOT EXISTS idx_handovers_employee   ON handovers(employee_name);
+CREATE INDEX IF NOT EXISTS idx_handovers_ftm_pin    ON handovers(ftm_pin);
+CREATE INDEX IF NOT EXISTS idx_handovers_department ON handovers(department);
+CREATE INDEX IF NOT EXISTS idx_handover_devices_hid ON handover_devices(handover_id);
+CREATE INDEX IF NOT EXISTS idx_handover_devices_sn  ON handover_devices(serial_number);
+
+-- Applications table (consolidated from setup_database.php / received_applications.php)
+CREATE TABLE IF NOT EXISTS applications (
+    id SERIAL PRIMARY KEY,
+    applied_date DATE,
+    application_ref_no VARCHAR(100),
+    job_card_no VARCHAR(100),
+    ftm_pin VARCHAR(50),
+    applicant_name VARCHAR(255),
+    dept VARCHAR(100),
+    item_name VARCHAR(255),
+    quantity INTEGER DEFAULT 1,
+    purpose TEXT,
+    urgency VARCHAR(50) DEFAULT 'normal',
+    status_tracking VARCHAR(100) DEFAULT 'pending',
+    allocation_date DATE,
+    remarks TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status_tracking);
+CREATE INDEX IF NOT EXISTS idx_applications_date   ON applications(applied_date);
+CREATE INDEX IF NOT EXISTS idx_applications_ref    ON applications(application_ref_no);
+CREATE INDEX IF NOT EXISTS idx_applications_dept   ON applications(dept);
+
+-- Idempotent column migrations for databases initialized before these columns were added
+ALTER TABLE items ADD COLUMN IF NOT EXISTS ftm_pin VARCHAR(100) NULL;
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS urgency VARCHAR(50) DEFAULT 'normal';

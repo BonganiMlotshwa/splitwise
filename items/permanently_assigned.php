@@ -74,9 +74,20 @@ function extract_assigned_by($notes) {
                 <td><?php echo htmlspecialchars($item['serial_number'] ?? 'N/A'); ?></td>
                 <td><?php echo htmlspecialchars(extract_assigned_by($item['notes'])); ?></td>
                 <?php if (is_admin()): ?>
-                <td>
+                <td class="d-flex gap-1 flex-wrap">
                     <a href="<?php echo BASE_PATH; ?>items/edit_item.php?id=<?php echo $item['id']; ?>" class="btn btn-sm btn-outline-secondary">Edit</a>
-                    <a href="<?php echo BASE_PATH; ?>items/delete_item.php?id=<?php echo $item['id']; ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this item?');">Delete</a>
+                    <form method="post" action="<?php echo BASE_PATH; ?>items/revoke_permanent.php" class="d-inline"
+                          onsubmit="return confirm('Revoke this permanent assignment? The item will become available.');">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="id" value="<?php echo (int)$item['id']; ?>">
+                        <button type="submit" class="btn btn-sm btn-outline-warning">Revoke</button>
+                    </form>
+                    <form method="post" action="<?php echo BASE_PATH; ?>items/delete_item.php" class="d-inline"
+                          onsubmit="return confirm('Permanently delete this item?');">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="id" value="<?php echo (int)$item['id']; ?>">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
                 </td>
                 <?php endif; ?>
             </tr>

@@ -22,6 +22,7 @@ if (!$item) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $item_name = trim($_POST['item_name'] ?? '');
     $serial_number = trim($_POST['serial_number'] ?? '');
     $category = trim($_POST['category'] ?? '');
@@ -71,6 +72,7 @@ include __DIR__ . '/../includes/header.php';
   <div class="alert alert-danger"><ul class="mb-0"><?php foreach($errors as $e){ echo '<li>'.htmlspecialchars($e).'</li>'; } ?></ul></div>
 <?php endif; ?>
 <form method="post" class="card p-3">
+  <?php echo csrf_field(); ?>
   <div class="mb-3">
     <label class="form-label">Item Name *</label>
     <input type="text" name="item_name" class="form-control" value="<?php echo htmlspecialchars($item['item_name']); ?>" required>

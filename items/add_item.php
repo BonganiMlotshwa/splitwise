@@ -24,12 +24,15 @@ if (empty($categories)) {
 $categories = array_values(array_filter($categories, fn($n) => strtolower(trim((string)$n)) !== 'tool'));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $item_name = trim($_POST['item_name'] ?? '');
     $serial_number = trim($_POST['serial_number'] ?? '');
     $category = trim($_POST['category'] ?? '');
     $description = trim($_POST['description'] ?? '');
+    $quantity = max(1, (int)($_POST['quantity'] ?? 1));
 
     if ($item_name === '') $errors[] = 'Item name is required.';
+    if ($quantity < 1 || $quantity > 1000) $errors[] = 'Quantity must be between 1 and 1000.';
 
     // No special normalization/validation for serial number; accept as entered
 
@@ -46,8 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dupStmt->execute([$item_name, $serial_number, $category, $description]);
         $duplicates = $dupStmt->fetchAll();
 
-        if (!empty($duplicates) && empty($_POST['confirm_duplicate'])) {
-            // Ask for confirmation instead of inserting immediately
+        if (!empty($duplicates) && empty($_POST['confirm_duplicate']) && $quantity === 1) {
+            // Ask for confirmation instead of inserting immediately (only for single items)
             $needConfirm = true;
         }
     }
@@ -57,18 +60,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sql = "INSERT INTO items (item_name, serial_number, category, description, status, returned, created_at) VALUES (?,?,?,?,?,false,NOW())";
             $stmt = $conn->prepare($sql);
             $status = 'available';
-            $stmt->execute([$item_name, $serial_number, $category, $description, $status]);
-            $new_id = $conn->lastInsertId();
-            // Log activity
-            $details = json_encode([
-                'serial_number' => $serial_number,
-                'category' => $category,
-                'description' => $description,
-            ]);
-            write_activity($conn, 'add_item', 'item', $new_id, $details);
-            $_SESSION['success'] = 'Item added successfully!';
-            header('Location: ' . BASE_PATH . 'items/items.php');
-            exit;
+            $addedCount = 0;
+            
+            for ($i = 0; $i < $quantity; $i++) {
+                $stmt->execute([$item_name, $serial_number, $category, $description, $status]);
+                $new_id = $conn->lastInsertId();
+                if ($new_id) {
+                    $addedCount++;
+                    // Log activity for each item
+                    $details = json_encode([
+                        'serial_number' => $serial_number,
+                        'category' => $category,
+                        'description' => $description,
+                        'quantity_insert' => $quantity,
+                        'item_number' => ($i + 1)
+                    ]);
+                    write_activity($conn, 'add_item', 'item', $new_id, $details);
+                }
+            }
+            
+            if ($addedCount > 0) {
+                $message = ($quantity === 1) ? 'Item added successfully!' : "$addedCount item(s) added successfully!";
+                $_SESSION['success'] = $message;
+                header('Location: ' . BASE_PATH . 'items/items.php');
+                exit;
+            } else {
+                $errors[] = 'Failed to add items.';
+            }
         } catch (Exception $e) {
             $errors[] = "Failed to add item: {$e->getMessage()}";
         }
@@ -98,6 +116,7 @@ include __DIR__ . '/../includes/header.php';
   </div>
 <?php endif; ?>
 <form method="post" class="card p-3">
+  <?php echo csrf_field(); ?>
   <div class="mb-3 position-relative" id="itemNameGroup">
     <label class="form-label">Item Name *</label>
     <input type="text" name="item_name" id="item_name" class="form-control" autocomplete="off" required value="<?php echo htmlspecialchars($_POST['item_name'] ?? ''); ?>">
@@ -128,14 +147,32 @@ include __DIR__ . '/../includes/header.php';
     <input type="text" name="description" id="description" class="form-control" placeholder="e.g., 5m, 3m, 1m; or color/model" value="<?php echo htmlspecialchars($_POST['description'] ?? ''); ?>">
     <div class="form-text">Short descriptor such as size/length/spec that differentiates similar items.</div>
   </div>
+  <div class="mb-3">
+    <label class="form-label">Quantity</label>
+    <input type="number" name="quantity" id="quantity" class="form-control" min="1" max="1000" value="<?php echo htmlspecialchars($_POST['quantity'] ?? '1'); ?>" placeholder="How many to add">
+    <div class="form-text">Enter the number of items to add at once. For example, enter 50 to add 50 RJ45 heads.</div>
+  </div>
   <?php if ($needConfirm): ?>
     <input type="hidden" name="confirm_duplicate" value="1">
   <?php endif; ?>
   <div class="d-flex justify-content-end gap-2">
     <a href="<?php echo BASE_PATH; ?>items/items.php" class="btn btn-secondary">Cancel</a>
-    <button type="submit" class="btn btn-primary"><?php echo $needConfirm ? 'Add Anyway' : 'Add Item'; ?></button>
+    <button type="submit" class="btn btn-primary" id="submitBtn"><?php echo $needConfirm ? 'Add Anyway' : 'Add Item'; ?></button>
   </div>
 </form>
+<script>
+// Update button text based on quantity
+document.getElementById('quantity')?.addEventListener('change', function() {
+  const submitBtn = document.getElementById('submitBtn');
+  const qty = parseInt(this.value) || 1;
+  submitBtn.textContent = qty === 1 ? 'Add Item' : 'Add ' + qty + ' Items';
+});
+document.getElementById('quantity')?.addEventListener('input', function() {
+  const submitBtn = document.getElementById('submitBtn');
+  const qty = parseInt(this.value) || 1;
+  submitBtn.textContent = qty === 1 ? 'Add Item' : 'Add ' + qty + ' Items';
+});
+</script>
 <script>
 (function(){
   const BASE_PATH = <?php echo json_encode(BASE_PATH); ?>;

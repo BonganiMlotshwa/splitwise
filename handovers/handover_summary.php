@@ -190,6 +190,7 @@ include __DIR__ . '/../includes/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="post" action="<?php echo BASE_PATH; ?>handovers/handovers.php">
+                <?php echo csrf_field(); ?>
                 <div class="modal-body">
                     <input type="hidden" name="action" value="add_handover">
                     

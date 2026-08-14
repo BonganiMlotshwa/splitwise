@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config.php';
 
 $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
@@ -40,6 +41,7 @@ include __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 <div class="d-flex justify-content-center">
 <form method="post" class="card p-4 text-center mx-auto" style="max-width: 420px; width: 100%;">
+  <?php echo csrf_field(); ?>
   <div class="mb-3">
     <label class="form-label w-100 text-center">Username</label>
     <input type="text" name="username" class="form-control text-center mx-auto" required>

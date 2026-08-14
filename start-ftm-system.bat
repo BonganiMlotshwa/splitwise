@@ -48,7 +48,7 @@ echo ========================================
 echo.
 echo System URL: http://localhost:8000
 echo Login Page: http://localhost:8000/auth/login.php
-echo Database: Docker PostgreSQL on localhost:5432
+echo Database: Docker PostgreSQL on localhost:5433 (pgAdmin use port 5433)
 echo.
 echo Login uses credentials from your local .env file (ADMIN_PASSWORD).
 echo If .env is missing, copy .env.example to .env and set passwords first.

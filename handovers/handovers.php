@@ -12,6 +12,7 @@ if (!$conn) {
 
 // Handle form submission for adding new handover
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_handover') {
+    verify_csrf();
     $date_issued = trim($_POST['date_issued'] ?? '');
     $employee_name = strtoupper(trim($_POST['employee_name'] ?? ''));
     $ftm_pin = strtoupper(trim($_POST['ftm_pin'] ?? ''));
@@ -85,6 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // Handle form submission for editing handover
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_handover') {
+    verify_csrf();
     $handover_id = (int)($_POST['handover_id'] ?? 0);
     $date_issued = trim($_POST['date_issued'] ?? '');
     $employee_name = strtoupper(trim($_POST['employee_name'] ?? ''));
@@ -161,9 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// Handle delete action
-if (isset($_GET['delete']) && is_admin()) {
-    $id = (int)$_GET['delete'];
+// Handle delete action (POST only to prevent CSRF)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_handover' && is_admin()) {
+    verify_csrf();
+    $id = (int)($_POST['delete_id'] ?? 0);
     try {
         $conn->beginTransaction();
         
@@ -300,12 +303,15 @@ include __DIR__ . '/../includes/header.php';
                                         title="Edit handover">
                                     <i class="bi bi-pencil"></i>
                                 </button>
-                                <a href="?delete=<?php echo $handover['id']; ?>" 
-                                   class="btn btn-sm btn-outline-danger"
-                                   onclick="return confirm('Are you sure you want to delete this handover record?')"
-                                   title="Delete handover">
-                                    <i class="bi bi-trash"></i>
-                                </a>
+                                <form method="post" action="" class="d-inline"
+                                      onsubmit="return confirm('Delete this handover record?');">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="delete_handover">
+                                    <input type="hidden" name="delete_id" value="<?php echo (int)$handover['id']; ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete handover">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
                             </td>
                             <?php endif; ?>
                         </tr>
@@ -350,6 +356,7 @@ include __DIR__ . '/../includes/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="post">
+                <?php echo csrf_field(); ?>
                 <div class="modal-body">
                     <input type="hidden" name="action" value="add_handover">
                     
@@ -452,6 +459,7 @@ include __DIR__ . '/../includes/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="post" id="editHandoverForm">
+                <?php echo csrf_field(); ?>
                 <div class="modal-body">
                     <input type="hidden" name="action" value="edit_handover">
                     <input type="hidden" name="handover_id" id="edit_handover_id">

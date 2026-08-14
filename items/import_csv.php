@@ -11,6 +11,7 @@ $duplicates_found = 0;
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
+    verify_csrf();
     $file = $_FILES['csv_file'];
     $skip_duplicates = isset($_POST['skip_duplicates']) && $_POST['skip_duplicates'] === '1';
     
@@ -251,6 +252,7 @@ Monitor Samsung,SN-67890,Display,24-inch LED,Finance,available,,,</pre>
             </div>
             
             <form method="POST" enctype="multipart/form-data">
+                <?php echo csrf_field(); ?>
                 <div class="mb-3">
                     <label for="csv_file" class="form-label">Select CSV File</label>
                     <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv" required>

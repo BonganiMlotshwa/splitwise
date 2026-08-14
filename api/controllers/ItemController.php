@@ -276,7 +276,9 @@ class ItemController extends BaseController {
             $this->db->begin_transaction();
             
             // Delete related records first (if any)
-            $this->db->query("DELETE FROM checkouts WHERE item_id = $id");
+            $stmt_del = $this->db->prepare("DELETE FROM checkouts WHERE item_id = ?");
+            $stmt_del->bind_param('i', $id);
+            $stmt_del->execute();
             
             // Then delete the item
             $stmt = $this->db->prepare("DELETE FROM items WHERE id = ?");

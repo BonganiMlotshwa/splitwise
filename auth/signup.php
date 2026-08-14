@@ -9,6 +9,7 @@ if (!ALLOW_PUBLIC_SIGNUP) {
 
 $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -53,6 +54,7 @@ include __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 <div class="d-flex justify-content-center">
 <form method="post" class="card p-4 text-center mx-auto" style="max-width: 520px; width: 100%;">
+  <?php echo csrf_field(); ?>
   <div class="mb-3">
     <label class="form-label w-100 text-center">Name</label>
     <input type="text" name="name" class="form-control text-center mx-auto" required value="<?php echo htmlspecialchars($_POST['name'] ?? ''); ?>">

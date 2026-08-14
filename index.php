@@ -3,29 +3,31 @@ require_once __DIR__ . '/config.php';
 require_login();
 include __DIR__ . '/includes/header.php';
 
-// Simple counts
-$total = (int)($conn->query("SELECT COUNT(*) c FROM items")->fetch()['c'] ?? 0);
-$available = (int)($conn->query("SELECT COUNT(*) c FROM items WHERE status='available'")->fetch()['c'] ?? 0);
-$checked = (int)($conn->query("SELECT COUNT(*) c FROM items WHERE status='checked_out'")->fetch()['c'] ?? 0);
-$permanent = (int)($conn->query("SELECT COUNT(*) c FROM items WHERE status='permanently_assigned'")->fetch()['c'] ?? 0);
+// One query for all item status counts
+$counts = $conn->query("SELECT
+    COUNT(*) AS total,
+    COUNT(*) FILTER (WHERE status='available')           AS available,
+    COUNT(*) FILTER (WHERE status='checked_out')         AS checked_out,
+    COUNT(*) FILTER (WHERE status='permanently_assigned') AS permanent,
+    COUNT(*) FILTER (WHERE status='checked_out'
+        AND expected_return_date IS NOT NULL
+        AND expected_return_date < CURRENT_DATE)         AS overdue
+    FROM items")->fetch();
+$total     = (int)($counts['total']     ?? 0);
+$available = (int)($counts['available'] ?? 0);
+$checked   = (int)($counts['checked_out'] ?? 0);
+$permanent = (int)($counts['permanent'] ?? 0);
+$overdue   = (int)($counts['overdue']   ?? 0);
 
-// Get handover count from main database
 $handovers = 0;
 try {
-    $handovers = (int)($conn->query("SELECT COUNT(*) c FROM handovers")->fetch()['c'] ?? 0);
-} catch (Exception $e) {
-    // If handover tables don't exist yet, count will remain 0
-    $handovers = 0;
-}
+    $handovers = (int)($conn->query("SELECT COUNT(*) FROM handovers")->fetchColumn() ?? 0);
+} catch (Exception $e) {}
 
-// Get applications count from main database
 $applications = 0;
 try {
-    $applications = (int)($conn->query("SELECT COUNT(*) c FROM applications")->fetch()['c'] ?? 0);
-} catch (Exception $e) {
-    // If applications table doesn't exist yet, count will remain 0
-    $applications = 0;
-}
+    $applications = (int)($conn->query("SELECT COUNT(*) FROM applications")->fetchColumn() ?? 0);
+} catch (Exception $e) {}
 
 // Inventory summary by NAME (top 10 by total desc)
 $nameRows = [];
@@ -365,6 +367,16 @@ if ($breakName !== '') {
     </div>
   </div>
 </div>
+
+<?php if ($overdue > 0): ?>
+<div class="alert alert-danger d-flex align-items-center gap-2 mt-3" role="alert">
+  <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+  <div>
+    <strong><?php echo $overdue; ?> item<?php echo $overdue > 1 ? 's are' : ' is'; ?> overdue for return.</strong>
+    <a href="<?php echo BASE_PATH; ?>items/items.php?status=checked_out" class="alert-link ms-2">View overdue items &rarr;</a>
+  </div>
+</div>
+<?php endif; ?>
 
 <!-- Quick Actions Section -->
 <div class="row g-4 my-4">

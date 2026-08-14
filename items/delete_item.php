@@ -2,15 +2,15 @@
 require_once __DIR__ . '/../config.php';
 require_login();
 require_admin();
+verify_csrf();
 
-$id = (int)($_GET['id'] ?? 0);
+$id = (int)($_POST['id'] ?? 0);
 if ($id <= 0) {
     $_SESSION['error'] = 'Invalid item ID.';
     header('Location: ' . BASE_PATH . 'items/items.php');
     exit;
 }
 
-// Load for activity details
 $stmt = $conn->prepare('SELECT id, item_name FROM items WHERE id=?');
 $stmt->execute([$id]);
 $item = $stmt->fetch();

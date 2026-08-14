@@ -4,6 +4,7 @@ require_login();
 
 // Handle bulk delete action
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete' && is_admin()) {
+    verify_csrf();
     $selectedIds = $_POST['selected_items'] ?? [];
     if (!empty($selectedIds)) {
         try {
@@ -136,6 +137,9 @@ if (is_admin()) {
 
   <?php if (is_admin()): ?>
   <div class="btn-group" role="group">
+    <button type="button" class="btn btn-outline-primary btn-sm" id="bulkAssignBtn" disabled onclick="bulkAssignPermanent()">
+      <i class="bi bi-person-check"></i> Assign Permanently (<span id="selectedCount2">0</span>)
+    </button>
     <button type="button" class="btn btn-outline-danger btn-sm" id="bulkDeleteBtn" disabled onclick="confirmBulkDelete()">
       <i class="bi bi-trash"></i> Delete Selected (<span id="selectedCount">0</span>)
     </button>
@@ -151,6 +155,7 @@ if (is_admin()) {
 
 <form method="post" id="bulkActionForm">
   <input type="hidden" name="bulk_action" value="delete">
+  <?php echo csrf_field(); ?>
 <div class="table-responsive">
   <table class="table table-striped table-bordered align-middle" style="white-space: normal; word-break: break-word;">
     <thead>
@@ -247,11 +252,17 @@ if (is_admin()) {
             <?php endif; ?>
           </td>
           <td>
+            <a href="<?php echo BASE_PATH; ?>items/item_history.php?id=<?php echo (int)$it['id']; ?>" class="btn btn-sm btn-outline-info" title="Item History">
+              <i class="bi bi-clock-history"></i>
+            </a>
             <?php if (is_admin()): ?>
               <a href="<?php echo BASE_PATH; ?>items/edit_item.php?id=<?php echo (int)$it['id']; ?>" class="btn btn-sm btn-outline-secondary">Edit</a>
-              <a href="<?php echo BASE_PATH; ?>items/delete_item.php?id=<?php echo (int)$it['id']; ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this item?');">Delete</a>
-            <?php else: ?>
-              <span class="text-muted small">No actions</span>
+              <form method="post" action="<?php echo BASE_PATH; ?>items/delete_item.php" class="d-inline"
+                    onsubmit="return confirm('Delete this item?');">
+                <?php echo csrf_field(); ?>
+                <input type="hidden" name="id" value="<?php echo (int)$it['id']; ?>">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+              </form>
             <?php endif; ?>
           </td>
         </tr>
@@ -266,19 +277,30 @@ if (is_admin()) {
 document.getElementById('selectAll')?.addEventListener('change', function() {
   const checkboxes = document.querySelectorAll('.item-checkbox');
   checkboxes.forEach(cb => cb.checked = this.checked);
-  updateBulkDeleteButton();
+  updateBulkButtons();
 });
 
 // Update button when individual checkboxes change
 document.querySelectorAll('.item-checkbox').forEach(cb => {
-  cb.addEventListener('change', updateBulkDeleteButton);
+  cb.addEventListener('change', updateBulkButtons);
 });
 
-function updateBulkDeleteButton() {
+function updateBulkButtons() {
   const checked = document.querySelectorAll('.item-checkbox:checked');
   const count = checked.length;
   document.getElementById('selectedCount').textContent = count;
+  document.getElementById('selectedCount2').textContent = count;
   document.getElementById('bulkDeleteBtn').disabled = count === 0;
+  document.getElementById('bulkAssignBtn').disabled = count === 0;
+}
+
+function bulkAssignPermanent() {
+  const checked = document.querySelectorAll('.item-checkbox:checked');
+  const count = checked.length;
+  if (count === 0) return;
+  
+  const itemIds = Array.from(checked).map(cb => cb.value).join(',');
+  window.location.href = '<?php echo BASE_PATH; ?>items/assign_permanent.php?items=' + encodeURIComponent(itemIds);
 }
 
 function confirmBulkDelete() {
@@ -307,7 +329,7 @@ function confirmBulkDelete() {
   <div class="text-muted small">
     Showing <?php echo $totalRows ? ($offset+1) : 0; ?>–<?php echo min($offset + $perPage, $totalRows); ?> of <?php echo $totalRows; ?>
   </div>
-  <nav>
+  <nav class="d-flex align-items-center gap-2">
     <ul class="pagination pagination-sm mb-0">
       <li class="page-item <?php echo $page<=1?'disabled':''; ?>">
         <a class="page-link" href="<?php echo $makeUrl(max(1,$page-1)); ?>">Prev</a>
@@ -317,6 +339,16 @@ function confirmBulkDelete() {
         <a class="page-link" href="<?php echo $makeUrl(min($totalPages,$page+1)); ?>">Next</a>
       </li>
     </ul>
+    <?php if ($totalPages > 2): ?>
+    <form method="get" action="<?php echo BASE_PATH; ?>items/items.php" class="d-flex align-items-center gap-1">
+      <?php foreach ($baseParams as $k => $v): ?>
+        <input type="hidden" name="<?php echo htmlspecialchars($k); ?>" value="<?php echo htmlspecialchars($v); ?>">
+      <?php endforeach; ?>
+      <input type="number" name="page" class="form-control form-control-sm" style="width:70px;"
+             min="1" max="<?php echo $totalPages; ?>" placeholder="Go…"
+             onchange="if(this.value>=1&&this.value<=<?php echo $totalPages; ?>)this.form.submit()">
+    </form>
+    <?php endif; ?>
   </nav>
 </div>
 <?php include __DIR__ . '/../includes/footer.php'; ?>

@@ -21,6 +21,7 @@ try {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $identifier = trim($_POST['identifier'] ?? '');
     if ($identifier === '') {
         $errors[] = 'Please enter your email or your full name.';
@@ -95,6 +96,7 @@ include __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 <div class="d-flex justify-content-center">
 <form method="post" class="card p-4 text-center mx-auto" style="max-width: 420px; width: 100%;">
+  <?php echo csrf_field(); ?>
   <div class="mb-3">
     <label class="form-label w-100 text-center">Email or Full Name</label>
     <input type="text" name="identifier" class="form-control text-center mx-auto" required>

@@ -244,12 +244,6 @@
       // Start the timeout system
       scheduleWarning();
       
-      // Debug logging (remove in production)
-      console.log('Session timeout initialized:', {
-        role: role,
-        timeoutSec: timeoutSec,
-        warnBefore: warnBefore
-      });
     })();
     </script>
     <?php endif; ?>

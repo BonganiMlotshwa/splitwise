@@ -7,6 +7,7 @@ global $conn;
 
 // Handle form submission for adding new application
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_application') {
+    verify_csrf();
     $application_ref_no = strtoupper(trim($_POST['application_ref_no'] ?? ''));
     $applied_date = trim($_POST['applied_date'] ?? '');
     $applicant_name = strtoupper(trim($_POST['applicant_name'] ?? ''));
@@ -60,23 +61,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// Handle delete action
-if (isset($_GET['delete']) && is_admin()) {
-    $id = (int)$_GET['delete'];
-    try {
-        $stmt = $conn->prepare("DELETE FROM applications WHERE id = ?");
-        $stmt->execute([$id]);
-        $_SESSION['success'] = 'Application record deleted successfully!';
-    } catch (Exception $e) {
-        $_SESSION['error'] = 'Error deleting record: ' . $e->getMessage();
+// Handle delete action (POST only to prevent CSRF)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_application' && is_admin()) {
+    verify_csrf();
+    $id = (int)($_POST['delete_id'] ?? 0);
+    if ($id > 0) {
+        try {
+            $stmt = $conn->prepare("DELETE FROM applications WHERE id = ?");
+            $stmt->execute([$id]);
+            $_SESSION['success'] = 'Application record deleted successfully!';
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Error deleting record: ' . $e->getMessage();
+        }
     }
-    $view = $_GET['view'] ?? 'handed_over';
+    $view = $_POST['view'] ?? 'all';
     header('Location: ' . BASE_PATH . 'reports/received_applications.php?view=' . urlencode($view));
     exit;
 }
 
 // Handle form submission for editing application
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_application') {
+    verify_csrf();
     $application_id = (int)($_POST['application_id'] ?? 0);
     $applied_date = trim($_POST['applied_date'] ?? '');
     $applicant_name = strtoupper(trim($_POST['applicant_name'] ?? ''));
@@ -124,9 +129,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-$view = $_GET['view'] ?? 'handed_over';
-if (!in_array($view, ['handed_over', 'approved', 'all'], true)) {
-    $view = 'handed_over';
+$view = $_GET['view'] ?? 'all';
+if (!in_array($view, ['handed_over', 'approved', 'pending', 'all'], true)) {
+    $view = 'all';
 }
 $search = trim($_GET['q'] ?? '');
 $page = max(1, (int)($_GET['page'] ?? 1));
@@ -135,7 +140,7 @@ $perPage = max(10, min(100, (int)($_GET['per_page'] ?? 25)));
 $applications = [];
 $totalRows = 0;
 $dbError = null;
-$stats = ['approved' => 0, 'handed_over' => 0, 'pending' => 0];
+$stats = ['approved' => 0, 'handed_over' => 0, 'pending' => 0, 'total' => 0];
 
 if (!$conn) {
     $dbError = 'Cannot connect to the database.';
@@ -146,23 +151,16 @@ if (!$conn) {
         $tableExists = $stmt->fetchColumn();
         
         if (!$tableExists) {
-            // Create a simple applications table for future use
-            $conn->exec("
-                CREATE TABLE IF NOT EXISTS applications (
-                    id SERIAL PRIMARY KEY,
-                    applicant_name VARCHAR(255),
-                    status_tracking VARCHAR(100) DEFAULT 'pending',
-                    allocation_date DATE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ");
+            // Table should be created by init.sql on first boot; flag rather than create inline
+            $dbError = 'The applications table does not exist. Please run the database setup.';
         }
         
         $statSql = "SELECT
             COUNT(*) FILTER (WHERE LOWER(TRIM(status_tracking)) = 'approved') AS approved,
             COUNT(*) FILTER (WHERE LOWER(TRIM(status_tracking)) IN ('allocated', 'completed')
                 OR allocation_date IS NOT NULL) AS handed_over,
-            COUNT(*) FILTER (WHERE LOWER(TRIM(status_tracking)) = 'pending') AS pending
+            COUNT(*) FILTER (WHERE LOWER(TRIM(status_tracking)) = 'pending') AS pending,
+            COUNT(*) AS total
             FROM applications";
         $stats = $conn->query($statSql)->fetch() ?: $stats;
 
@@ -173,9 +171,10 @@ if (!$conn) {
             $where[] = "LOWER(TRIM(status_tracking)) = 'approved'";
         } elseif ($view === 'handed_over') {
             $where[] = "(LOWER(TRIM(status_tracking)) IN ('allocated', 'completed') OR allocation_date IS NOT NULL)";
-        } else {
-            $where[] = "LOWER(TRIM(status_tracking)) IN ('approved', 'allocated', 'completed')";
+        } elseif ($view === 'pending') {
+            $where[] = "LOWER(TRIM(status_tracking)) = 'pending'";
         }
+        // 'all' = no filter, show everything
 
         if ($search !== '') {
             $where[] = "(application_ref_no ILIKE ? OR applicant_name ILIKE ? OR dept ILIKE ?
@@ -276,7 +275,7 @@ include __DIR__ . '/../includes/header.php';
 </div>
 
 <p class="text-muted mb-4">
-    Equipment requests from the Applications system — approved and handed over to staff (inventory view).
+    Track all equipment applications — pending, approved, allocated and handed over.
 </p>
 
 <?php if ($dbError): ?>
@@ -286,27 +285,35 @@ include __DIR__ . '/../includes/header.php';
 <?php else: ?>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="card stat-card handed h-100">
+    <div class="col-md-3">
+        <div class="card stat-card h-100" style="border-left: 4px solid #6c757d;">
             <div class="card-body">
-                <div class="text-muted small">Handed over / allocated</div>
-                <div class="fs-3 fw-bold text-success"><?php echo (int)$stats['handed_over']; ?></div>
+                <div class="text-muted small">Total Applications</div>
+                <div class="fs-3 fw-bold text-secondary"><?php echo (int)($stats['total'] ?? 0); ?></div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
+        <div class="card stat-card pending h-100">
+            <div class="card-body">
+                <div class="text-muted small">Pending</div>
+                <div class="fs-3 fw-bold text-warning"><?php echo (int)$stats['pending']; ?></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
         <div class="card stat-card approved h-100">
             <div class="card-body">
-                <div class="text-muted small">Approved (awaiting handover)</div>
+                <div class="text-muted small">Approved</div>
                 <div class="fs-3 fw-bold text-info"><?php echo (int)$stats['approved']; ?></div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card stat-card pending h-100">
+    <div class="col-md-3">
+        <div class="card stat-card handed h-100">
             <div class="card-body">
-                <div class="text-muted small">Still pending</div>
-                <div class="fs-3 fw-bold text-warning"><?php echo (int)$stats['pending']; ?></div>
+                <div class="text-muted small">Handed Over</div>
+                <div class="fs-3 fw-bold text-success"><?php echo (int)$stats['handed_over']; ?></div>
             </div>
         </div>
     </div>
@@ -314,16 +321,28 @@ include __DIR__ . '/../includes/header.php';
 
 <ul class="nav nav-pills mb-3">
     <li class="nav-item">
-        <a class="nav-link <?php echo $view === 'handed_over' ? 'active' : ''; ?>"
-           href="?view=handed_over&amp;q=<?php echo urlencode($search); ?>">Handed over</a>
+        <a class="nav-link <?php echo $view === 'all' ? 'active' : ''; ?>"
+           href="?view=all&amp;q=<?php echo urlencode($search); ?>">
+           <i class="bi bi-list-ul me-1"></i>All Applications
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link <?php echo $view === 'pending' ? 'active' : ''; ?>"
+           href="?view=pending&amp;q=<?php echo urlencode($search); ?>">
+           <i class="bi bi-hourglass me-1"></i>Pending
+        </a>
     </li>
     <li class="nav-item">
         <a class="nav-link <?php echo $view === 'approved' ? 'active' : ''; ?>"
-           href="?view=approved&amp;q=<?php echo urlencode($search); ?>">Approved</a>
+           href="?view=approved&amp;q=<?php echo urlencode($search); ?>">
+           <i class="bi bi-check-circle me-1"></i>Approved
+        </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link <?php echo $view === 'all' ? 'active' : ''; ?>"
-           href="?view=all&amp;q=<?php echo urlencode($search); ?>">All received</a>
+        <a class="nav-link <?php echo $view === 'handed_over' ? 'active' : ''; ?>"
+           href="?view=handed_over&amp;q=<?php echo urlencode($search); ?>">
+           <i class="bi bi-box-arrow-right me-1"></i>Handed Over
+        </a>
     </li>
 </ul>
 
@@ -397,12 +416,16 @@ include __DIR__ . '/../includes/header.php';
                                     title="Edit application">
                                 <i class="bi bi-pencil"></i>
                             </button>
-                            <a href="?delete=<?php echo $row['id']; ?>&view=<?php echo urlencode($view); ?>" 
-                               class="btn btn-sm btn-outline-danger"
-                               onclick="return confirm('Are you sure you want to delete this application record?')"
-                               title="Delete application">
-                                <i class="bi bi-trash"></i>
-                            </a>
+                            <form method="post" action="" class="d-inline"
+                                  onsubmit="return confirm('Delete this application record?');">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="delete_application">
+                                <input type="hidden" name="delete_id" value="<?php echo (int)$row['id']; ?>">
+                                <input type="hidden" name="view" value="<?php echo htmlspecialchars($view, ENT_QUOTES); ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete application">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
                         </td>
                         <?php endif; ?>
                     </tr>
@@ -449,14 +472,22 @@ include __DIR__ . '/../includes/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="post">
+                <?php echo csrf_field(); ?>
                 <div class="modal-body">
                     <input type="hidden" name="action" value="add_application">
                     
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Reference Number <span class="text-danger">*</span></label>
-                            <input type="text" name="application_ref_no" class="form-control" required 
-                                   placeholder="Enter reference number" style="text-transform: uppercase;">
+                            <div class="input-group">
+                                <span class="input-group-text" id="ref-prefix-display" style="background:#e9ecef;font-weight:600;min-width:60px;">A<?php echo date('y'); ?>-</span>
+                                <input type="text" name="application_ref_no" id="application_ref_no" 
+                                       class="form-control" required 
+                                       placeholder="e.g. A26-001"
+                                       style="text-transform: uppercase;"
+                                       value="A<?php echo date('y'); ?>-">
+                            </div>
+                            <small class="text-muted">Format: A<em>YY</em>-<em>number</em> — change year prefix if needed (e.g. A25-001 for last year)</small>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Application Date <span class="text-danger">*</span></label>
@@ -511,8 +542,15 @@ include __DIR__ . '/../includes/header.php';
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Job Card Number</label>
-                            <input type="text" name="job_card_no" class="form-control" 
-                                   placeholder="Enter job card number (optional)" style="text-transform: uppercase;">
+                            <div class="input-group">
+                                <span class="input-group-text" style="background:#e9ecef;font-weight:600;min-width:60px;">J<?php echo date('y'); ?>-</span>
+                                <input type="text" name="job_card_no" id="job_card_no"
+                                       class="form-control" 
+                                       placeholder="e.g. J26-001"
+                                       style="text-transform: uppercase;"
+                                       value="J<?php echo date('y'); ?>-">
+                            </div>
+                            <small class="text-muted">Format: J<em>YY</em>-<em>number</em> — change year if needed</small>
                         </div>
                     </div>
                     
@@ -574,6 +612,7 @@ include __DIR__ . '/../includes/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="post" id="editApplicationForm">
+                <?php echo csrf_field(); ?>
                 <div class="modal-body">
                     <input type="hidden" name="action" value="edit_application">
                     <input type="hidden" name="application_id" id="edit_application_id">
@@ -680,66 +719,116 @@ include __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-// Auto-uppercase input fields
 document.addEventListener('DOMContentLoaded', function() {
-    const uppercaseInputs = document.querySelectorAll('input[style*="text-transform: uppercase"]');
-    uppercaseInputs.forEach(input => {
+
+    // ── Auto-uppercase ──────────────────────────────────────────────
+    document.querySelectorAll('input[style*="text-transform: uppercase"]').forEach(input => {
         input.addEventListener('input', function() {
+            const pos = this.selectionStart;
             this.value = this.value.toUpperCase();
+            this.setSelectionRange(pos, pos);
         });
     });
-    
-    // Edit application functionality
-    const editButtons = document.querySelectorAll('.edit-application-btn');
-    editButtons.forEach(button => {
+
+    // ── Smart prefix enforcement for Ref No and Job Card ────────────
+    // Pattern: A<YY>- for ref, J<YY>- for job card
+    // User can change the year digits but the letter and dash are enforced
+
+    function enforcePrefix(input, letter) {
+        input.addEventListener('input', function() {
+            let val = this.value.toUpperCase();
+
+            // Must start with the letter
+            if (!val.startsWith(letter)) {
+                val = letter + val.replace(new RegExp('^' + letter + '*'), '');
+            }
+
+            // After the letter, expect 1-2 digits then a dash
+            // Allow user to type freely but auto-insert dash after 2 digits if missing
+            const afterLetter = val.slice(1);
+            const dashIdx = afterLetter.indexOf('-');
+
+            if (dashIdx === -1 && afterLetter.length >= 2) {
+                // Auto-insert dash after 2 year digits
+                const yearPart = afterLetter.slice(0, 2).replace(/\D/g, '');
+                const rest = afterLetter.slice(2);
+                val = letter + yearPart + '-' + rest;
+            }
+
+            this.value = val;
+        });
+
+        // Prevent deleting the leading letter
+        input.addEventListener('keydown', function(e) {
+            if ((e.key === 'Backspace' || e.key === 'Delete') && this.selectionStart <= 1 && this.selectionEnd <= 1) {
+                e.preventDefault();
+            }
+        });
+
+        // On focus, place cursor at end
+        input.addEventListener('focus', function() {
+            const len = this.value.length;
+            this.setSelectionRange(len, len);
+        });
+    }
+
+    const refInput = document.getElementById('application_ref_no');
+    const jobInput = document.getElementById('job_card_no');
+    if (refInput) enforcePrefix(refInput, 'A');
+    if (jobInput) enforcePrefix(jobInput, 'J');
+
+    // ── Reset prefixes when Add modal opens ─────────────────────────
+    const addModal = document.getElementById('addApplicationModal');
+    if (addModal) {
+        addModal.addEventListener('show.bs.modal', function() {
+            const yr = '<?php echo date('y'); ?>';
+            if (refInput) refInput.value = 'A' + yr + '-';
+            if (jobInput) jobInput.value = 'J' + yr + '-';
+        });
+    }
+
+    // ── Edit application functionality ──────────────────────────────
+    document.querySelectorAll('.edit-application-btn').forEach(button => {
         button.addEventListener('click', function() {
-            const applicationId = this.getAttribute('data-application-id');
-            loadApplicationData(applicationId);
+            loadApplicationData(this.getAttribute('data-application-id'));
         });
     });
-    
+
     function loadApplicationData(applicationId) {
-        // Find the row data
         const row = document.querySelector(`[data-application-id="${applicationId}"]`).closest('tr');
         const cells = row.querySelectorAll('td');
-        
-        // Extract data from the row
-        const refNo = cells[0].textContent.trim();
-        const appliedDate = cells[1].textContent.trim();
+
+        const refNo      = cells[0].textContent.trim();
+        const appliedDate= cells[1].textContent.trim();
         const applicantName = cells[2].textContent.trim();
-        const dept = cells[3].querySelector('.badge').textContent.trim();
-        const itemName = cells[4].textContent.trim();
-        const quantity = cells[5].textContent.trim();
-        const status = cells[6].querySelector('.badge').textContent.trim().toLowerCase();
+        const dept       = cells[3].querySelector('.badge')?.textContent.trim() ?? cells[3].textContent.trim();
+        const itemName   = cells[4].textContent.trim();
+        const quantity   = cells[5].textContent.trim();
+        const status     = cells[6].querySelector('.badge')?.textContent.trim().toLowerCase() ?? '';
         const handedOver = cells[7].textContent.trim();
-        const ftmPin = cells[8].textContent.trim();
-        const jobCard = cells[9].textContent.trim();
-        
-        // Populate the edit form
-        document.getElementById('edit_application_id').value = applicationId;
-        document.getElementById('edit_applied_date').value = formatDateForInput(appliedDate);
-        document.getElementById('edit_applicant_name').value = applicantName;
-        document.getElementById('edit_dept').value = dept;
-        document.getElementById('edit_item_name').value = itemName;
-        document.getElementById('edit_quantity').value = quantity;
-        document.getElementById('edit_status_tracking').value = status;
-        document.getElementById('edit_ftm_pin').value = ftmPin === '—' ? '' : ftmPin;
-        document.getElementById('edit_job_card_no').value = jobCard === '—' ? '' : jobCard;
-        document.getElementById('edit_allocation_date').value = formatDateForInput(handedOver);
-        
-        // Show the modal
-        const editModal = new bootstrap.Modal(document.getElementById('editApplicationModal'));
-        editModal.show();
+        const ftmPin     = cells[8].textContent.trim();
+        const jobCard    = cells[9].textContent.trim();
+
+        document.getElementById('edit_application_id').value   = applicationId;
+        document.getElementById('edit_applied_date').value     = formatDateForInput(appliedDate);
+        document.getElementById('edit_applicant_name').value   = applicantName;
+        document.getElementById('edit_dept').value             = dept;
+        document.getElementById('edit_item_name').value        = itemName;
+        document.getElementById('edit_quantity').value         = quantity;
+        document.getElementById('edit_status_tracking').value  = status;
+        document.getElementById('edit_ftm_pin').value          = ftmPin === '—' ? '' : ftmPin;
+        document.getElementById('edit_job_card_no').value      = jobCard === '—' ? '' : jobCard;
+        document.getElementById('edit_allocation_date').value  = formatDateForInput(handedOver);
+
+        new bootstrap.Modal(document.getElementById('editApplicationModal')).show();
     }
-    
+
     function formatDateForInput(dateStr) {
         if (!dateStr || dateStr === '—') return '';
         try {
             const date = new Date(dateStr);
             return date.toISOString().split('T')[0];
-        } catch (e) {
-            return '';
-        }
+        } catch (e) { return ''; }
     }
 });
 </script>

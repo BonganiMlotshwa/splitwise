@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_login();
+require_admin();
 
 // This script will create all missing tables in the main database
 echo "<h2>Database Setup</h2>";

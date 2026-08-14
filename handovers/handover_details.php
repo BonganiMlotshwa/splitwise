@@ -201,12 +201,15 @@ include __DIR__ . '/../includes/header.php';
                                         title="Edit handover">
                                     <i class="bi bi-pencil"></i>
                                 </button>
-                                <a href="<?php echo BASE_PATH; ?>handovers/handovers.php?delete=<?php echo $handover['id']; ?>" 
-                                   class="btn btn-sm btn-outline-danger"
-                                   onclick="return confirm('Are you sure you want to delete this handover record?')"
-                                   title="Delete handover">
-                                    <i class="bi bi-trash"></i>
-                                </a>
+                                <form method="post" action="<?php echo BASE_PATH; ?>handovers/handovers.php" class="d-inline"
+                                      onsubmit="return confirm('Delete this handover record?');">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="delete_handover">
+                                    <input type="hidden" name="delete_id" value="<?php echo (int)$handover['id']; ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete handover">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
                             </td>
                             <?php endif; ?>
                         </tr>
@@ -252,6 +255,7 @@ include __DIR__ . '/../includes/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="post" action="<?php echo BASE_PATH; ?>handovers/handovers.php">
+                <?php echo csrf_field(); ?>
                 <div class="modal-body">
                     <input type="hidden" name="action" value="add_handover">
                     

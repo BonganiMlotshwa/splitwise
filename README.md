@@ -1,143 +1,174 @@
 # FTM IT Property Management System
 
-PHP + PostgreSQL application for IT asset checkout, equipment handovers, and received equipment applications. Runs in Docker via `start-ftm-system.bat`.
+PHP 8 + PostgreSQL 16 application for IT asset tracking, equipment handovers, and received-equipment applications. Runs in Docker on Windows via `start-ftm-system.bat`.
+
+---
 
 ## Quick Start
 
 1. Start Docker Desktop.
-2. Run `start-ftm-system.bat` from the project root.
-3. Copy `.env.example` to `.env` and set strong passwords (see [Security](#security) below).
-4. Open [http://localhost:8000/auth/login.php](http://localhost:8000/auth/login.php)
+2. Copy `.env.example` to `.env` and fill in all required values (see [Environment Variables](#environment-variables)).
+3. Run `start-ftm-system.bat` from the project root.
+4. Open [http://localhost:8000/auth/login.php](http://localhost:8000/auth/login.php) and log in as `admin`.
 
-**Stop the stack**
+To stop: `docker compose down`
 
-```bat
-docker-compose down
-```
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env`. Never commit `.env`.
+
+| Variable | Required | Description |
+|---|---|---|
+| `DB_PASSWORD` | Yes | PostgreSQL user password |
+| `POSTGRES_PASSWORD` | Yes | Same value as `DB_PASSWORD` |
+| `ADMIN_PASSWORD` | Yes | Password for the built-in `admin` account |
+| `ALLOW_PUBLIC_SIGNUP` | No | `false` (default) — prevents self-registration |
+| `APP_ENV` | No | `production` hides PHP errors from users; `development` shows them |
+| `SMTP_ENABLED` | No | `true` to send password-reset emails; `false` (default) |
+
+Changing `ADMIN_PASSWORD` and restarting Docker updates the admin login automatically.
+
+---
 
 ## Docker Services
 
-| Service         | Container        | Host port | Purpose                                      |
-|-----------------|------------------|-----------|----------------------------------------------|
-| `php`           | `ftm_php`        | `8000`    | Apache + PHP application                     |
-| `postgres`      | `ftm_postgres`   | `5432`    | Main DB: items, users, applications, handovers |
-| `apps-postgres` | `ftm_apps_postgres` | `5433` | Legacy secondary DB (not used by current PHP pages) |
+| Service | Container | Host Port | Purpose |
+|---|---|---|---|
+| `php` | `ftm_php` | `8000` | Apache + PHP application |
+| `postgres` | `ftm_postgres` | `5433` | Main database |
 
-The PHP container connects to `postgres` using the environment variables defined in `docker-compose.yml` (mirrored in `config.php`).
+The PHP container connects to Postgres using `DB_SERVER=postgres` (Docker internal hostname).
 
-## Configuration (`config.php`)
+---
 
-All pages include `config.php`. Key settings:
+## Database Setup
 
-| Setting | Source | Default (local Docker) |
-|---------|--------|-------------------------|
-| `DB_SERVER` | `getenv('DB_SERVER')` | `postgres` |
-| `DB_USERNAME` | `getenv('DB_USERNAME')` | `postgres` |
-| `DB_PASSWORD` | `getenv('DB_PASSWORD')` | *(required in `.env`)* |
-| `ADMIN_PASSWORD` | `getenv('ADMIN_PASSWORD')` | *(required in `.env`)* |
-| `ALLOW_PUBLIC_SIGNUP` | `getenv('ALLOW_PUBLIC_SIGNUP')` | `false` |
-| `DB_NAME` | `getenv('DB_NAME')` | `ftm_it_property_records` |
-| `DB_PORT` | `getenv('DB_PORT')` | `5432` |
-| `BASE_PATH` | constant | `/` |
-| `SITE_NAME` | constant | `FTM IT PROPERTY RECORDS` |
+`init.sql` runs automatically on the **first** container start and creates all tables:
 
-Session timeouts: admins 30 minutes, users 45 minutes.
-
-SMTP and AI assistant options are also defined in `config.php` (`SMTP_ENABLED`, `AI_PROVIDER`, etc.).
-
-### Automatic schema updates
-
-On each request, `config.php` ensures these columns exist on older databases:
-
-- `items.ftm_pin` — FTM PIN for permanent item assignments
-- `applications.urgency` — priority level (`low`, `normal`, `high`, `urgent`; default `normal`)
-
-No manual migration is required for those columns after pulling the latest code.
-
-### First-time / full database setup
-
-`init.sql` seeds core tables (users, items, categories) when the Postgres volume is first created.
-
-Handover and application tables are created by **`setup_database.php`**:
-
-[http://localhost:8000/setup_database.php](http://localhost:8000/setup_database.php)
-
-Run this once on a new environment (or after restoring an old database) to create:
-
+- `users`, `items`, `categories`, `departments`, `password_reset_tokens`
+- `activity_log` — DB-backed audit trail
+- `employees` — 15 IT staff who receive equipment (replaces all hardcoded name lists)
 - `handovers`, `handover_devices` — equipment handover records
-- `applications` — received application requests (includes `urgency`)
+- `applications` — received equipment requests
 
-## Main Features
+If you are connecting to an **existing** database, run the migrations manually:
+
+```bash
+docker exec -it ftm_postgres psql -U postgres -d ftm_it_property_records
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS employees (
+    id SERIAL PRIMARY KEY, name VARCHAR(190) NOT NULL,
+    ftm_pin VARCHAR(50), department VARCHAR(100),
+    active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS activity_log (
+    id SERIAL PRIMARY KEY, actor_user_id INTEGER,
+    action VARCHAR(100) NOT NULL, entity_type VARCHAR(50) NOT NULL,
+    entity_id INTEGER NOT NULL, details TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE items ADD COLUMN IF NOT EXISTS ftm_pin VARCHAR(100) NULL;
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS urgency VARCHAR(50) DEFAULT 'normal';
+```
+
+`setup_database.php` (admin-only) can also be used to create missing tables on an existing database.
+
+---
+
+## Features
 
 ### Items (`items/`)
 
-Check out and return IT equipment, import CSV, manage categories and departments.
+| Page | Description |
+|---|---|
+| `items.php` | List, search, filter, bulk-delete items |
+| `add_item.php` | Add items with duplicate detection and batch quantity |
+| `edit_item.php` | Edit name, serial, category, description, status |
+| `delete_item.php` | POST-only delete (admin only) |
+| `checkout.php` | Check out items to staff (dropdown from `employees` table) |
+| `return_item.php` | Multi-select return with condition and notes |
+| `assign_permanent.php` | Permanently assign items to employees with FTM PIN |
+| `permanently_assigned.php` | View permanent assignments; admins can Revoke or Delete |
+| `revoke_permanent.php` | Revoke a permanent assignment; item returns to Available |
+| `item_history.php` | Full audit trail for a single item (DB + file log) |
+| `import_csv.php` | Bulk import from CSV with duplicate detection |
 
-### Equipment Handovers (`handovers/`)
+### Handovers (`handovers/`)
 
-Record devices issued to staff (employee, FTM PIN, department, serial numbers). Export and summary reports included.
+Record devices issued to staff (employee, FTM PIN, department, serial numbers).
+Export to PDF, view summaries and detailed breakdowns per employee.
 
 ### Received Applications (`reports/received_applications.php`)
 
-Track equipment requests with:
-
-- Reference number, applicant, department, FTM PIN, job card
+Track equipment requests:
+- Reference number, applicant, department, FTM PIN, job card number
 - Item, quantity, purpose
-- **Urgency**: Low, Normal, High, Urgent
-- **Status**: Pending, Approved, Allocated, Completed, Rejected, Cancelled
-- Handed-over (allocation) date
+- Urgency: Low / Normal / High / Urgent
+- Status: Pending → Approved → Allocated / Completed / Rejected / Cancelled
+- Allocation date and remarks
 
-Filtered views: Handed Over, Approved, All. Admins can delete records.
+Filtered views: All, Handed Over, Approved, Pending. Admins can add, edit, and delete records.
+
+### Activity Log (`reports/activity.php`)
+
+All create/update/delete/checkout/return actions are logged to both:
+- `logs/activity-YYYY-MM-DD.json` (flat file, always available)
+- `activity_log` DB table (queryable; per-item history via `item_history.php`)
+
+### Dashboard (`index.php`)
+
+Single-query stat cards: Total, Available, Checked Out, Permanently Assigned, Handovers, Applications. Overdue items alert shown when any checked-out item is past its expected return date.
+
+---
 
 ## Project Layout
 
 ```
-auth/           Login, password reset
-items/          Item checkout, returns, import
-handovers/      Equipment handover forms and exports
-reports/        Received applications and other reports
-includes/       Shared layout (header, footer, nav)
-api/            JSON API endpoints
-config.php      DB connection, auth helpers, auto-migrations
-setup_database.php   Create/update handover & application tables
-init.sql        Docker first-run schema for core tables
-docker-compose.yml
-start-ftm-system.bat
+auth/                   Login, logout, password reset, signup
+items/                  All item management pages
+handovers/              Handover forms, summary, details, export
+reports/                Received applications, activity log
+includes/               Shared header, footer, nav
+api/                    JSON API endpoints (legacy; not used by current pages)
+logs/                   Daily JSON activity logs (gitignored)
+vendor/                 Composer packages: dompdf (PDF export)
+config.php              DB connection, auth helpers, CSRF, activity logging
+init.sql                First-run schema for all tables + employee seed data
+setup_database.php      Admin-only page to create/verify tables on existing DBs
+docker-compose.yml      PHP + Postgres service definitions
+Dockerfile              PHP/Apache image with pdo_pgsql
+start-ftm-system.bat    Windows helper to start Docker and open browser
+.env.example            Template — copy to .env, never commit .env
 ```
+
+---
 
 ## Security
 
-Credentials are **not** stored in this repository. Before first run:
+- **CSRF tokens** on every POST form site-wide (per-session, `hash_equals` verified).
+- **POST-only deletes** — no delete action is reachable via a GET URL.
+- **Bcrypt** password hashing for all user accounts.
+- **Role-based access** — admin-only pages call `require_admin()`.
+- **Prepared statements** throughout — no raw string interpolation in SQL.
+- **Error display** controlled by `APP_ENV` — set `production` to suppress PHP errors from users.
+- Credentials belong in `.env` (gitignored). Use Vaultwarden for shared secrets.
 
-1. Copy `.env.example` to `.env`.
-2. Set `ADMIN_PASSWORD` to a strong password (used for the `admin` login).
-3. Set `DB_PASSWORD` and `POSTGRES_PASSWORD` to matching strong values.
-4. Keep `ALLOW_PUBLIC_SIGNUP=false` so visitors cannot create their own accounts.
-
-The app syncs `ADMIN_PASSWORD` from `.env` to the database on startup. Change `.env` and restart Docker to rotate the admin password.
-
-If this project was ever public with old default passwords, change all passwords in `.env` immediately and consider making the GitHub repository private.
+---
 
 ## Troubleshooting
 
-**`column "urgency" of relation "applications" does not exist`**
-
-Pull the latest `config.php` and reload any page (auto-migration runs on connect), or run `setup_database.php`. You can also apply manually:
-
-```sql
-ALTER TABLE applications ADD COLUMN urgency VARCHAR(50) DEFAULT 'normal';
-```
-
-**Applications or handover pages empty / table missing**
-
-Open [setup_database.php](http://localhost:8000/setup_database.php) once.
+**Checkout "Taken By" list is empty**
+The `employees` table is missing. Run the migration SQL above, or restart with a fresh Docker volume so `init.sql` runs.
 
 **Cannot connect to database**
+Check container health: `docker compose ps`. The app expects Postgres at host `postgres` inside the Docker network — not `localhost`.
 
-Ensure containers are healthy: `docker-compose ps`. The app expects Postgres at host `postgres` inside the Docker network (not `localhost` from inside PHP).
+**Applications or handover pages blank / table missing**
+Visit `setup_database.php` as an admin to create missing tables.
 
-## Notes
-
-- PHP entry point: `/auth/login.php` (not Angular).
-- Activity is logged to `logs/activity-YYYY-MM-DD.log`.
-- Composer vendor packages (e.g. Dompdf for PDF export) live under `vendor/`.
+**PHP errors visible in browser**
+Set `APP_ENV=production` in `.env` and restart PHP: `docker compose restart php`.

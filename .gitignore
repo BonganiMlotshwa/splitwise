@@ -86,3 +86,5 @@ docker-compose.local.yml
 # --- Misc scratch files ---
 ignore.gitignore.txt
 CLEANUP-SUMMARY.md
+*.tmp
+*_backup.sql
